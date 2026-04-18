@@ -280,18 +280,19 @@ public class LibraryManagementSystemImpl implements LibraryManagementSystem {
     public ApiResult borrowBook(Borrow borrow) {
         Connection conn = connector.getConn();
         try {
-            // 检查库存是否充足
-            String stockSql = "SELECT stock FROM book WHERE book_id = ?";
+            String stockSql = "SELECT stock FROM book WHERE book_id = ? FOR UPDATE";
             PreparedStatement stockStmt = conn.prepareStatement(stockSql);
             stockStmt.setInt(1, borrow.getBookId());
             ResultSet stockRs = stockStmt.executeQuery();
             if (!stockRs.next()) {
+                rollback(conn);
                 return new ApiResult(false, "Book not found: book_id = " + borrow.getBookId());
             }
             if (stockRs.getInt("stock") <= 0) {
+                rollback(conn);
                 return new ApiResult(false, "No stock available for book_id = " + borrow.getBookId());
             }
-
+    
             // 检查该用户是否已借了这本书且未归还
             String borrowCheckSql = "SELECT COUNT(*) FROM borrow WHERE card_id = ? AND book_id = ? AND return_time = 0";
             PreparedStatement borrowCheckStmt = conn.prepareStatement(borrowCheckSql);
@@ -299,9 +300,10 @@ public class LibraryManagementSystemImpl implements LibraryManagementSystem {
             borrowCheckStmt.setInt(2, borrow.getBookId());
             ResultSet borrowCheckRs = borrowCheckStmt.executeQuery();
             if (borrowCheckRs.next() && borrowCheckRs.getInt(1) > 0) {
+                rollback(conn);
                 return new ApiResult(false, "This card has already borrowed this book and not returned yet.");
             }
-
+    
             // 插入借阅记录
             String insertSql = "INSERT INTO borrow (card_id, book_id, borrow_time, return_time) VALUES (?, ?, ?, 0)";
             PreparedStatement insertStmt = conn.prepareStatement(insertSql);
@@ -309,13 +311,13 @@ public class LibraryManagementSystemImpl implements LibraryManagementSystem {
             insertStmt.setInt(2, borrow.getBookId());
             insertStmt.setLong(3, borrow.getBorrowTime());
             insertStmt.executeUpdate();
-
+    
             // 库存减 1
             String updateStockSql = "UPDATE book SET stock = stock - 1 WHERE book_id = ?";
             PreparedStatement updateStockStmt = conn.prepareStatement(updateStockSql);
             updateStockStmt.setInt(1, borrow.getBookId());
             updateStockStmt.executeUpdate();
-
+    
             commit(conn);
             return new ApiResult(true, null);
         } catch (Exception e) {
@@ -328,7 +330,7 @@ public class LibraryManagementSystemImpl implements LibraryManagementSystem {
     public ApiResult returnBook(Borrow borrow) {
         Connection conn = connector.getConn();
         try {
-            // 查找该用户对该书的未归还记录
+            // 查找该用户对该书的未归还记录，同时取出 borrow_time 用于时间校验
             String checkSql = "SELECT borrow_time FROM borrow WHERE card_id = ? AND book_id = ? AND return_time = 0";
             PreparedStatement checkStmt = conn.prepareStatement(checkSql);
             checkStmt.setInt(1, borrow.getCardId());
@@ -337,7 +339,14 @@ public class LibraryManagementSystemImpl implements LibraryManagementSystem {
             if (!rs.next()) {
                 return new ApiResult(false, "No active borrow record found for this card and book.");
             }
-
+    
+            long borrowTime = rs.getLong("borrow_time");
+    
+            // return_time 必须严格大于 borrow_time
+            if (borrow.getReturnTime() <= borrowTime) {
+                return new ApiResult(false, "Return time must be greater than borrow time.");
+            }
+    
             // 更新归还时间
             String updateBorrowSql = "UPDATE borrow SET return_time = ? WHERE card_id = ? AND book_id = ? AND return_time = 0";
             PreparedStatement updateBorrowStmt = conn.prepareStatement(updateBorrowSql);
@@ -345,13 +354,13 @@ public class LibraryManagementSystemImpl implements LibraryManagementSystem {
             updateBorrowStmt.setInt(2, borrow.getCardId());
             updateBorrowStmt.setInt(3, borrow.getBookId());
             updateBorrowStmt.executeUpdate();
-
+    
             // 库存加 1
             String updateStockSql = "UPDATE book SET stock = stock + 1 WHERE book_id = ?";
             PreparedStatement updateStockStmt = conn.prepareStatement(updateStockSql);
             updateStockStmt.setInt(1, borrow.getBookId());
             updateStockStmt.executeUpdate();
-
+    
             commit(conn);
             return new ApiResult(true, null);
         } catch (Exception e) {
