@@ -10,7 +10,7 @@
 `mvn clean compile`
 
 运行主代码
-`mvn exec:java -Dexec.mainClass="Main" -Dexec.cleanupDaemonThreads=false`
+`mvn compile exec:java "-Dexec.mainClass=Main" "-Dexec.cleanupDaemonThreads=false"`
 
 运行所有的测试
 `mvn -Dtest=LibraryTest clean test`

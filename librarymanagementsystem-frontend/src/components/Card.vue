@@ -10,10 +10,10 @@
         <div style="display: flex;flex-wrap: wrap; justify-content: start;">
 
             <!-- 借书证卡片 -->
-            <div class="cardBox" v-for="card in cards" v-show="card.name.includes(toSearch)" :key="card.id">
+            <div class="cardBox" v-for="card in cards" v-show="card.name.includes(toSearch)" :key="card.cardId">
                 <div>
                     <!-- 卡片标题 -->
-                    <div style="font-size: 25px; font-weight: bold;">No. {{ card.id }}</div>
+                    <div style="font-size: 25px; font-weight: bold;">No. {{ card.cardId }}</div>
 
                     <el-divider />
 
@@ -21,18 +21,18 @@
                     <div style="margin-left: 10px; text-align: start; font-size: 16px;">
                         <p style="padding: 2.5px;"><span style="font-weight: bold;">姓名：</span>{{ card.name }}</p>
                         <p style="padding: 2.5px;"><span style="font-weight: bold;">部门：</span>{{ card.department }}</p>
-                        <p style="padding: 2.5px;"><span style="font-weight: bold;">类型：</span>{{ card.type }}</p>
+                        <p style="padding: 2.5px;"><span style="font-weight: bold;">类型：</span>{{ card.type === 'T' ? '教师' : '学生' }}</p>
                     </div>
 
                     <el-divider />
 
                     <!-- 卡片操作 -->
                     <div style="margin-top: 10px;">
-                        <el-button type="primary" :icon="Edit" @click="this.toModifyInfo.id = card.id, this.toModifyInfo.name = card.name,
-                this.toModifyInfo.department = card.department, this.toModifyInfo.type = card.type,
+                        <el-button type="primary" :icon="Edit" @click="this.toModifyInfo.id = card.cardId, this.toModifyInfo.name = card.name,
+                this.toModifyInfo.department = card.department, this.toModifyInfo.type = card.type === 'T' ? '教师' : '学生',
                 this.modifyCardVisible = true" circle />
                         <el-button type="danger" :icon="Delete" circle
-                            @click="this.toRemove = card.id, this.removeCardVisible = true"
+                            @click="this.toRemove = card.cardId, this.removeCardVisible = true"
                             style="margin-left: 30px;" />
                     </div>
 
@@ -77,7 +77,7 @@
         </el-dialog>
 
 
-        <!-- 修改信息对话框 -->   
+        <!-- 修改信息对话框 -->
         <el-dialog v-model="modifyCardVisible" :title="'修改信息(借书证ID: ' + this.toModifyInfo.id + ')'" width="30%"
             align-center>
             <div style="margin-left: 2vw; font-weight: bold; font-size: 1rem; margin-top: 20px; ">
@@ -104,7 +104,7 @@
             </template>
         </el-dialog>
 
-        <!-- 删除借书证对话框 -->  
+        <!-- 删除借书证对话框 -->
         <el-dialog v-model="removeCardVisible" title="删除借书证" width="30%">
             <span>确定删除<span style="font-weight: bold;">{{ toRemove }}号借书证</span>吗？</span>
 
@@ -129,42 +129,25 @@ import axios from 'axios'
 export default {
     data() {
         return {
-            cards: [{ // 借书证列表
-                id: 1,
-                name: '小明',
-                department: '计算机学院',
-                type: '学生'
-            }, {
-                id: 2,
-                name: '王老师',
-                department: '计算机学院',
-                type: '教师'
-            }
-            ],
+            cards: [],
             Delete,
             Edit,
             Search,
-            toSearch: '', // 搜索内容
-            types: [ // 借书证类型
-                {
-                    value: '教师',
-                    label: '教师',
-                },
-                {
-                    value: '学生',
-                    label: '学生',
-                }
+            toSearch: '',
+            types: [
+                { value: '教师', label: '教师' },
+                { value: '学生', label: '学生' }
             ],
-            newCardVisible: false, // 新建借书证对话框可见性
-            removeCardVisible: false, // 删除借书证对话框可见性
-            toRemove: 0, // 待删除借书证号
-            newCardInfo: { // 待新建借书证信息
+            newCardVisible: false,
+            removeCardVisible: false,
+            toRemove: 0,
+            newCardInfo: {
                 name: '',
                 department: '',
                 type: '学生'
             },
-            modifyCardVisible: false, // 修改信息对话框可见性
-            toModifyInfo: { // 待修改借书证信息
+            modifyCardVisible: false,
+            toModifyInfo: {
                 id: 0,
                 name: '',
                 department: '',
@@ -174,41 +157,77 @@ export default {
     },
     methods: {
         ConfirmNewCard() {
-            // 发出POST请求
-            axios.post("/card",
-                { // 请求体
-                    name: this.newCardInfo.name,
-                    department: this.newCardInfo.department,
-                    type: this.newCardInfo.type
-                })
-                .then(response => {
-                    ElMessage.success("借书证新建成功") // 显示消息提醒
-                    this.newCardVisible = false // 将对话框设置为不可见
-                    this.QueryCards() // 重新查询借书证以刷新页面
-                })
+            axios.post('/card', {
+                name: this.newCardInfo.name,
+                department: this.newCardInfo.department,
+                // 前端"学生"/"教师" → 后端 S/T
+                type: this.newCardInfo.type === '教师' ? 'T' : 'S'
+            }).then(response => {
+                if (response.data.ok) {
+                    ElMessage.success('借书证新建成功')
+                    this.newCardVisible = false
+                    this.QueryCards()
+                } else {
+                    ElMessage.error('新建失败：' + response.data.message)
+                }
+            }).catch(() => {
+                ElMessage.error('请求失败，请检查后端是否启动')
+            })
         },
+
         ConfirmModifyCard() {
-            // TODO: YOUR CODE HERE
+            // PUT /card 修改借书证信息
+            axios.put('/card', {
+                cardId: this.toModifyInfo.id,
+                name: this.toModifyInfo.name,
+                department: this.toModifyInfo.department,
+                type: this.toModifyInfo.type === '教师' ? 'T' : 'S'
+            }).then(response => {
+                if (response.data.ok) {
+                    ElMessage.success('修改成功')
+                    this.modifyCardVisible = false
+                    this.QueryCards()
+                } else {
+                    ElMessage.error('修改失败：' + response.data.message)
+                }
+            }).catch(() => {
+                ElMessage.error('请求失败，请检查后端是否启动')
+            })
         },
+
         ConfirmRemoveCard() {
-            // TODO: YOUR CODE HERE
+            // DELETE /card?cardId=xxx 删除借书证
+            axios.delete('/card', {
+                params: { cardId: this.toRemove }
+            }).then(response => {
+                if (response.data.ok) {
+                    ElMessage.success('删除成功')
+                    this.removeCardVisible = false
+                    this.QueryCards()
+                } else {
+                    ElMessage.error('删除失败：' + response.data.message)
+                }
+            }).catch(() => {
+                ElMessage.error('请求失败，请检查后端是否启动')
+            })
         },
+
         QueryCards() {
-            this.cards = [] // 清空列表
-            let response = axios.get('/card') // 向/card发出GET请求
-                .then(response => {
-                    let cards = response.data // 接收响应负载
-                    cards.forEach(card => { // 对于每个借书证
-                        this.cards.push(card) // 将其加入到列表中
-                    })
+            this.cards = []
+            axios.get('/card').then(response => {
+                let cards = response.data
+                cards.forEach(card => {
+                    this.cards.push(card)
                 })
+            }).catch(() => {
+                ElMessage.error('获取借书证列表失败')
+            })
         }
     },
-    mounted() { // 当页面被渲染时
-        this.QueryCards() // 查询借书证
+    mounted() {
+        this.QueryCards()
     }
 }
-
 </script>
 
 
